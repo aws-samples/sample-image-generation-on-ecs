@@ -1,0 +1,6 @@
+skip-path:
+  - cdk.out
+skip-check:
+  - CKV_DOCKER_2  # SageMaker manages health via /ping endpoint
+  - CKV_DOCKER_3  # SageMaker containers require root
+  - CKV_DOCKER_7  # Base image pinned via ARG at build time

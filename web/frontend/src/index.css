@@ -1,0 +1,59 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-canvas text-ink font-sans antialiased;
+  }
+
+  ::selection {
+    @apply bg-accent-light text-accent;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply px-6 py-2.5 bg-accent text-white font-semibold rounded-full
+           shadow-soft hover:bg-accent-hover hover:shadow-glow
+           active:scale-[0.97] transition-all duration-200
+           disabled:opacity-40 disabled:pointer-events-none disabled:shadow-none;
+  }
+
+  .btn-secondary {
+    @apply px-5 py-2.5 bg-surface border border-border text-ink font-medium rounded-full
+           shadow-soft hover:border-accent/40 hover:text-accent
+           active:scale-[0.97] transition-all duration-200
+           disabled:opacity-40 disabled:pointer-events-none;
+  }
+
+  .btn-ghost {
+    @apply px-4 py-2 text-muted font-medium rounded-full
+           hover:bg-accent-light hover:text-accent
+           active:scale-[0.97] transition-all duration-150;
+  }
+
+  .input-field {
+    @apply w-full px-4 py-3 bg-surface border border-border rounded-2xl
+           text-ink placeholder:text-muted/50
+           focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent
+           transition-all duration-200;
+  }
+
+  .segmented-control {
+    @apply flex w-full bg-surface-raised border border-border rounded-full p-1 gap-0.5;
+  }
+
+  .segmented-btn {
+    @apply flex-1 px-4 py-1.5 text-sm font-semibold rounded-full transition-all duration-200
+           text-muted hover:text-ink text-center;
+  }
+
+  .segmented-btn-active {
+    @apply bg-accent text-white shadow-soft;
+  }
+
+  .card {
+    @apply bg-surface border border-border rounded-3xl shadow-soft;
+  }
+}

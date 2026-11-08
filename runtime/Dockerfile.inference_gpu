@@ -1,0 +1,56 @@
+ARG BASE_IMAGE
+ARG ZIMAGE_COMMIT=26f23eda626ffadda020b04ff79488e1d72004cd
+
+FROM ${BASE_IMAGE}
+
+ARG ZIMAGE_COMMIT
+
+# Clone upstream model architecture
+RUN mkdir -p /opt/ml/code && \
+    git clone https://github.com/Tongyi-MAI/Z-Image.git /tmp/zimage-upstream && \
+    cd /tmp/zimage-upstream && git checkout ${ZIMAGE_COMMIT} && \
+    cp -r src/zimage/ /opt/ml/code/zimage/ && \
+    cp -r src/config/ /opt/ml/code/config/ && \
+    cp -r src/utils/ /opt/ml/code/utils/ && \
+    rm -rf /tmp/zimage-upstream
+
+# Install runtime dependencies (incl. diffusers for ZImagePipeline)
+COPY requirements.txt /opt/ml/code/requirements.txt
+COPY requirements_gpu.txt /opt/ml/code/requirements_gpu.txt
+RUN pip install --no-cache-dir --upgrade -r /opt/ml/code/requirements_gpu.txt
+
+# Copy runtime libraries
+COPY lib/ /opt/ml/code/lib/
+COPY neuron/ /opt/ml/code/neuron/
+COPY serving/ /opt/ml/code/serving/
+COPY compile/ /opt/ml/code/compile/
+
+ENV ZIMAGE_DEFAULT_RESOLUTION=512 \
+    ZIMAGE_ALLOWED_RESOLUTIONS=512,768 \
+    TOKENIZERS_PARALLELISM=false \
+    OMP_NUM_THREADS=8 \
+    PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+
+WORKDIR /opt/ml/code
+
+# See Dockerfile.inference for full rationale. Same DLC-entrypoint
+# problem here — if SM invokes the container with `serve`, the literal
+# arg replaces our CMD and we'd exec a non-existent binary. Route via
+# entrypoint.sh: `serve` → start http server, anything else → exec args.
+RUN cat > /opt/ml/code/entrypoint.sh <<'EOF'
+#!/usr/bin/env bash
+set -e
+if [ "$1" = "serve" ]; then
+  exec python3 -m serving.server
+fi
+exec "$@"
+EOF
+RUN chmod +x /opt/ml/code/entrypoint.sh
+
+RUN useradd -m -u 1500 -s /bin/bash zimage && \
+    chown -R zimage:zimage /opt/ml/code
+USER zimage
+ENV HOME=/tmp
+
+ENTRYPOINT ["/opt/ml/code/entrypoint.sh"]
+CMD ["python3", "-m", "serving.server"]

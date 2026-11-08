@@ -1,0 +1,99 @@
+ARG BASE_IMAGE
+ARG ZIMAGE_COMMIT=26f23eda626ffadda020b04ff79488e1d72004cd
+
+FROM ${BASE_IMAGE}
+
+ARG ZIMAGE_COMMIT
+ARG RESOLUTION=512
+
+# Clone upstream model architecture
+RUN mkdir -p /opt/ml/code && \
+    git clone https://github.com/Tongyi-MAI/Z-Image.git /tmp/zimage-upstream && \
+    cd /tmp/zimage-upstream && git checkout ${ZIMAGE_COMMIT} && \
+    cp -r src/zimage/ /opt/ml/code/zimage/ && \
+    cp -r src/config/ /opt/ml/code/config/ && \
+    cp -r src/utils/ /opt/ml/code/utils/ && \
+    rm -rf /tmp/zimage-upstream
+
+# Upgrade neuronx-cc from the Neuron repo (cc 2.20 in the DLC rejects 1024
+# graphs over 5M instructions; 2.24.x handles implicit splitting).
+#
+# Security (M-14 dependency-confusion): the risk is a higher-versioned
+# neuronx-cc appearing on PyPI winning over the Neuron repo. We defeat that by
+# pinning an EXACT version (==2.24.8799.0) — no PyPI package can substitute a
+# "higher" build because we demand exactly this one, which only the Neuron repo
+# publishes. This is stronger than the range ~=2.24 the review flagged.
+#
+# Functionality: we keep --extra-index-url (NOT --index-url). --index-url
+# replaces PyPI entirely, so neuronx-cc's nki cannot resolve its PyPI-hosted
+# transitive deps and ships without 'nki.compiler.driver' -> compile fails with
+# NCC_IBCG902 "BIRCodeGenLoop error: No module named 'nki.compiler.driver'".
+# --extra-index-url keeps PyPI available for those deps; the exact pin still
+# closes the dependency-confusion hole.
+RUN pip install --no-cache-dir --upgrade \
+    --extra-index-url https://pip.repos.neuron.amazonaws.com \
+    "neuronx-cc==2.24.8799.0" && \
+    echo "=== neuronx-cc: $(pip show neuronx-cc 2>/dev/null | grep Version) ==="
+
+# Install/upgrade runtime dependencies into the conda env
+COPY requirements.txt /opt/ml/code/requirements.txt
+RUN pip install --no-cache-dir --upgrade -r /opt/ml/code/requirements.txt && \
+    echo "=== transformers version: $(python -c 'import transformers; print(transformers.__version__)') ==="
+
+# Copy runtime libraries
+COPY lib/ /opt/ml/code/lib/
+COPY neuron/ /opt/ml/code/neuron/
+COPY serving/ /opt/ml/code/serving/
+# Bundle compile/ so the same image can run as a Batch trace task
+# (TraceTransformer512 / TraceEncoder need /opt/ml/code/compile/compile.py).
+COPY compile/ /opt/ml/code/compile/
+
+ENV ZIMAGE_ROOT=/opt/ml/code \
+    ZIMAGE_ARTIFACTS_DIR=/opt/ml/zimage_artifacts \
+    ZIMAGE_DEFAULT_RESOLUTION=${RESOLUTION} \
+    ZIMAGE_ALLOWED_RESOLUTIONS=${RESOLUTION} \
+    PJRT_DEVICE=NEURON \
+    NEURON_RT_VISIBLE_CORES=0,1 \
+    NEURON_FUSE_SOFTMAX=1 \
+    NEURON_RT_EXEC_TIMEOUT=120 \
+    TOKENIZERS_PARALLELISM=false \
+    OMP_NUM_THREADS=16 \
+    MKL_NUM_THREADS=16
+
+WORKDIR /opt/ml/code
+
+# Two contexts use this image:
+#   1. AWS Batch (trace + warmup) — `Command` is set to `python3 ...` so
+#      our script runs as PID 1 and exits cleanly.
+#   2. SageMaker endpoints — SM invokes the container as `docker run img
+#      serve`. The literal `serve` arg replaces our CMD, so we route it
+#      via a tiny ENTRYPOINT shim that ignores positional args and starts
+#      our HTTP server.
+#
+# We override the SM-DLC base image's `dockerd-entrypoint.py` because it
+# ends with `subprocess.call(["tail", "-f", "/dev/null"])` (fine for SM,
+# fatal for Batch — containers never exit, ECS hangs RUNNING, Batch
+# never SUCCEEDED) and tokenizes our command via
+# `shlex.split(" ".join(sys.argv[1:]))`, destroying any multi-statement
+# bash command we try to pass through.
+#
+# `entrypoint.sh` checks `$1`: if "serve", launch the HTTP server; for
+# any other value (incl. python3 from Batch), exec the args directly.
+RUN cat > /opt/ml/code/entrypoint.sh <<'EOF'
+#!/usr/bin/env bash
+set -e
+if [ "$1" = "serve" ]; then
+  exec python3 -m serving.server
+fi
+exec "$@"
+EOF
+RUN chmod +x /opt/ml/code/entrypoint.sh
+
+RUN useradd -m -u 1500 -s /bin/bash zimage && \
+    chown -R zimage:zimage /opt/ml/code && \
+    mkdir -p /tmp/neuroncc && chown zimage:zimage /tmp/neuroncc
+USER zimage
+ENV HOME=/tmp
+
+ENTRYPOINT ["/opt/ml/code/entrypoint.sh"]
+CMD ["python3", "-m", "serving.server"]

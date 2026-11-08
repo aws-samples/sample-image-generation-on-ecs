@@ -1,0 +1,7 @@
+{
+  "name": "zimage-cdk-cli",
+  "private": true,
+  "devDependencies": {
+    "aws-cdk": "2.1130.0"
+  }
+}

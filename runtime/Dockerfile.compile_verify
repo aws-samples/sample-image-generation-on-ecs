@@ -1,0 +1,36 @@
+ARG BASE_IMAGE
+ARG ZIMAGE_COMMIT=26f23eda626ffadda020b04ff79488e1d72004cd
+
+FROM ${BASE_IMAGE}
+
+ARG ZIMAGE_COMMIT
+
+# Clone upstream model architecture
+RUN mkdir -p /opt/ml/code && \
+    git clone https://github.com/Tongyi-MAI/Z-Image.git /tmp/zimage-upstream && \
+    cd /tmp/zimage-upstream && git checkout ${ZIMAGE_COMMIT} && \
+    cp -r src/zimage/ /opt/ml/code/zimage/ && \
+    cp -r src/config/ /opt/ml/code/config/ && \
+    cp -r src/utils/ /opt/ml/code/utils/ && \
+    rm -rf /tmp/zimage-upstream
+
+# Install runtime dependencies
+COPY requirements.txt /opt/ml/code/requirements.txt
+RUN pip install --no-cache-dir --upgrade -r /opt/ml/code/requirements.txt
+
+# Copy runtime libraries + compile scripts
+COPY lib/ /opt/ml/code/lib/
+COPY neuron/ /opt/ml/code/neuron/
+COPY compile/ /opt/ml/code/compile/
+
+ENV PJRT_DEVICE=NEURON \
+    NEURON_RT_VISIBLE_CORES=0,1
+
+WORKDIR /opt/ml/code
+
+RUN useradd -m -u 1500 -s /bin/bash zimage && \
+    chown -R zimage:zimage /opt/ml/code && \
+    mkdir -p /tmp/neuroncc && chown zimage:zimage /tmp/neuroncc
+USER zimage
+
+ENTRYPOINT ["python3"]

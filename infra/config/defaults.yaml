@@ -1,0 +1,45 @@
+network:
+  nat_count: 1
+  # 3 AZs (us-east-1a/1b/1c) — the only AZs where BOTH inf2.8xlarge and
+  # g5.2xlarge are offered. 1e offers neither; 1d has no inf2 capacity.
+  az_count: 3
+
+inferentia_endpoint:
+  enabled: true
+  instance_type: inf2.8xlarge
+  min_capacity: 1
+  max_capacity: 4
+  warmup_min_capacity: 1
+  warmup_max_capacity: 2
+  root_volume_gb: 200
+  health_check_grace_s: 1800
+  alb_idle_timeout_s: 300
+  container_port: 8080
+
+gpu_endpoint:
+  enabled: false
+  instance_type: g5.2xlarge
+  max_pixels: 1048576
+  min_dimension: 256
+  dimension_step: 8
+  min_capacity: 1
+  max_capacity: 4
+  startup_timeout_s: 1800
+  root_volume_gb: 200
+  memory_mib: 30720
+  cpu: 8192
+
+security:
+  findings_email: dev-team@example.com
+
+web:
+  # Cognito hosted-UI domain prefix. Blank resolves to {prefix}-auth-{account},
+  # which is required because Cognito domain prefixes are globally unique per
+  # region across all AWS accounts — a bare "{env}-zimg-auth" collides with any
+  # other account deploying this repo with the same ZIMAGE_ENV.
+  cognito_domain_prefix: ""
+
+tags:
+  project: z-image
+  owner: ml-inference-team
+  cost_center: ml-inference

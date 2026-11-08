@@ -1,0 +1,4 @@
+-r requirements.txt
+# CUDA-only deps (accelerate for device-map / dtype handling diffusers
+# uses internally). diffusers itself is in requirements.txt (shared).
+accelerate==0.34.2

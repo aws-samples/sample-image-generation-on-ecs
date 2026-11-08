@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Playfair+Display:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+    <!--
+      Cognito config injected at deploy time by deploy_web.sh.
+      Placeholders are substituted with values from CDK outputs after `npm run build`.
+      Local dev: vite proxies to the backend; SPA reads these values via auth.ts:getAuthConfig().
+    -->
+    <meta
+      name="cognito-config"
+      data-user-pool-id="__COGNITO_USER_POOL_ID__"
+      data-client-id="__COGNITO_APP_CLIENT_ID__"
+      data-domain="__COGNITO_DOMAIN__"
+      data-region="__AWS_REGION__"
+    />
+    <title>Z-Image</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
