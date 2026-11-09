@@ -8,8 +8,8 @@ Production image generation platform running Z-Image-Turbo (a 6B-parameter diffu
 
 ### Request Flow
 
-1. **User** accesses React frontend via CloudFront CDN (also proxies `/api/*` requests)
-2. **API Gateway** validates Cognito JWT (HTTP API + WebSocket API)
+1. **User** accesses React frontend via CloudFront CDN (also proxies `/api/*` requests to the HTTP API)
+2. **API Gateway** — HTTP API validates the Cognito JWT; the WebSocket API is called directly (not through CloudFront) and a Lambda authorizer validates a short-lived ticket from `POST /api/ws-ticket`
 3. **Lambda** handles request — API (FastAPI/Mangum), WebSocket (streaming), Enhance (Bedrock). Saves to S3 + DynamoDB
 4. **Internal ALB** routes to ECS via `X-Target-Resolution` header (VPC-only, no public access)
 5. **ECS Inference** — 4 services: 512/768/1024 on inf2.8xlarge + GPU on g5.2xlarge. Least-outstanding-requests routing
@@ -56,7 +56,7 @@ make bootstrap
 
 # 4. Deploy inference first (web depends on the inference ALB)
 make deploy-inference
-# Wait for pipeline to complete (~25-45 min on first deploy)
+# Wait for pipeline to complete (~2 hours on first deploy)
 
 # 5. Deploy web (requires inference stack to be deployed)
 make deploy-web
@@ -69,6 +69,30 @@ make url
 ```
 
 First deploy of the inference pipeline takes ~2 hours (weights download + model compilation run on Batch). On subsequent deploys, use `make deploy` to trigger both pipelines simultaneously. If you change which backends are enabled, run `make bootstrap` before `make deploy-inference` to update ECR repos.
+
+## Using the API
+
+The REST API is served through CloudFront under `/api/*` and requires a Cognito ID token for a user created with `make create-admin` or `make create-user`.
+
+```bash
+URL=$(make -s url)
+CLIENT_ID=$(aws cloudformation describe-stacks --stack-name dev-zimg-web \
+  --query 'Stacks[0].Outputs[?OutputKey==`AppClientId`].OutputValue' --output text)
+
+TOKEN=$(aws cognito-idp initiate-auth --auth-flow USER_PASSWORD_AUTH \
+  --client-id "$CLIENT_ID" \
+  --auth-parameters USERNAME=you@example.com,PASSWORD='<password>' \
+  --query 'AuthenticationResult.IdToken' --output text)
+
+curl -s -X POST "$URL/api/generate" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "A campfire burning under the night sky", "width": 512, "height": 512, "seed": 996776, "backend": "neuron"}' \
+  | jq -r .image_b64 | base64 --decode > campfire.png
+```
+
+- `"backend": "neuron"` (Inferentia2) supports 512, 768, and 1024 square. `"gpu"` supports any size divisible by 8. If omitted, the default is `gpu` when the GPU endpoint is enabled.
+- For streaming, get a 30-second ticket from `POST /api/ws-ticket`, connect to the `WebSocketUrl` stack output with `?ticket=<ticket>`, and send `{"action": "generate", ...}` with the same fields. Each denoising step arrives as a JSON message with a JPEG preview, followed by a link to the final PNG.
 
 ## Infrastructure
 
