@@ -5,7 +5,7 @@ python-multipart==0.0.32
 websockets==16.1.1
 python-jose[cryptography]==3.5.0
 pydantic-settings==2.14.2
-pillow==12.3.0
+pillow==13.0.0
 loguru==0.7.3
 boto3==1.40.61
 pydantic==2.13.4
