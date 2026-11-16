@@ -56,7 +56,7 @@ make bootstrap
 
 # 4. Deploy inference first (web depends on the inference ALB)
 make deploy-inference
-# Wait for pipeline to complete (~2 hours on first deploy)
+# Wait for pipeline to complete (~25-45 min on first deploy)
 
 # 5. Deploy web (requires inference stack to be deployed)
 make deploy-web
@@ -68,11 +68,13 @@ make create-admin EMAIL=you@example.com
 make url
 ```
 
-First deploy of the inference pipeline takes ~2 hours (weights download + model compilation run on Batch). On subsequent deploys, use `make deploy` to trigger both pipelines simultaneously. If you change which backends are enabled, run `make bootstrap` before `make deploy-inference` to update ECR repos.
+First deploy takes ~45 minutes (model compilation runs on Batch). On subsequent deploys, use `make deploy` to trigger both pipelines simultaneously. If you change which backends are enabled, run `make bootstrap` before `make deploy-inference` to update ECR repos.
 
 ## Using the API
 
-The REST API is served through CloudFront under `/api/*` and requires a Cognito ID token for a user created with `make create-admin` or `make create-user`.
+### Get a token
+
+Create a user with `make create-user EMAIL=you@example.com` (it prints the password), then get a Cognito ID token. Tokens are valid for 1 hour.
 
 ```bash
 URL=$(make -s url)
@@ -83,16 +85,18 @@ TOKEN=$(aws cognito-idp initiate-auth --auth-flow USER_PASSWORD_AUTH \
   --client-id "$CLIENT_ID" \
   --auth-parameters USERNAME=you@example.com,PASSWORD='<password>' \
   --query 'AuthenticationResult.IdToken' --output text)
+```
 
+### Generate an image
+
+```bash
 curl -s -X POST "$URL/api/generate" \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{"prompt": "A campfire burning under the night sky", "width": 512, "height": 512, "seed": 996776, "backend": "neuron"}' \
   | jq -r .image_b64 | base64 --decode > campfire.png
 ```
 
-- `"backend": "neuron"` (Inferentia2) supports 512, 768, and 1024 square. `"gpu"` supports any size divisible by 8. If omitted, the default is `gpu` when the GPU endpoint is enabled.
-- For streaming, get a 30-second ticket from `POST /api/ws-ticket`, connect to the `WebSocketUrl` stack output with `?ticket=<ticket>`, and send `{"action": "generate", ...}` with the same fields. Each denoising step arrives as a JSON message with a JPEG preview, followed by a link to the final PNG.
+`neuron` (Inferentia2) supports 512, 768, and 1024 square. `gpu` supports any size divisible by 8.
 
 ## Infrastructure
 
