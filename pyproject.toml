@@ -41,7 +41,7 @@ dev = [
     "python-multipart==0.0.32",
     "websockets==16.1.1",
     "python-jose[cryptography]==3.5.0",
-    "pillow==12.3.0",
+    "pillow==13.0.0",
     "python-dotenv==1.2.2",
 ]
 
